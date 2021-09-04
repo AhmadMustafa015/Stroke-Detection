@@ -48,6 +48,8 @@ def get_metadata_from_dicom(img_dicom):
 
 def window_image(img, window_center, window_width, intercept, slope):
     #img = img * slope + intercept #no need for this in simple itk
+    window_center = 600
+    window_width = 2800
     img_min = window_center - window_width // 2
     img_max = window_center + window_width // 2
     img[img < img_min] = img_min
@@ -153,12 +155,15 @@ def fold_5_prepare():
     random.shuffle(all_samples)
     train_percent = int(len(all_samples) * 0.8)
     test_list = all_samples[train_percent:]
+    os.remove('output/'+ 'test.txt')
     with open('output/'+ 'test.txt', 'a', newline='') as f:
         writer = csv.writer(f)
         for cae in test_list:
             all_samples.remove(cae)
             writer.writerow([cae])
     for num_fold in range(5):
+        os.remove('output/fold_5_by_study/fold'+str(num_fold)+'/train.txt')
+        os.remove('output/fold_5_by_study/fold' + str(num_fold) + '/val.txt')
         random.shuffle(all_samples)
         train_percent = int(len(all_samples) * 0.8)
         train_data = all_samples[:train_percent]
@@ -171,8 +176,6 @@ def fold_5_prepare():
             writer = csv.writer(f)
             for cae in val_data:
                 writer.writerow([cae])
-
-#prepare_csv()
-fold_5_prepare()
 #prepare_data()
-
+#prepare_csv()
+#fold_5_prepare()

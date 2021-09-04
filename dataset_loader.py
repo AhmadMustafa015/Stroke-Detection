@@ -42,17 +42,26 @@ class Dataset_train_by_study_context(data.Dataset):
                  name_list = None,
                  transform = None
                  ):
-        self.df = df[df['filename'].isin(name_list)]
+        self.df = df#[df['filename'].isin(name_list)]
         self.name_list = name_list
         self.transform = transform
 
     def __getitem__(self, idx):
         study_name = self.name_list[idx % len(self.name_list)]
-        study_train_df = self.df[self.df['filename']==study_name]
+        study_train_df = self.df[self.df['filename'] == int(study_name)]
         #study_index = random.choice(generate_random_list(study_train_df.shape[0]-1))
 
         #slice_id = study_name + '_' + str(study_index)
-        filename = study_train_df['filename'].values[0]
+        filename = study_train_df['filename'].values
+        if study_train_df['any'].values == 0:
+            fullname = str(filename[0]) + '_0.png'
+        elif study_train_df['ISKEMI'].values == 1:
+            fullname = str(filename[0]) + '_1.png'
+        elif study_train_df['KANAMA'].values == 1:
+            fullname = str(filename[0]) + '_2.png'
+        else:
+            print("Error wrong image label")
+
         """
         if study_index == (study_train_df.shape[0]-1):
             filename_up = filename
@@ -66,16 +75,15 @@ class Dataset_train_by_study_context(data.Dataset):
             slice_id_down = study_name + '_' + str(study_index-1)
             filename_down = study_train_df[study_train_df['slice_id']==slice_id_down]['filename'].values[0]
         """
-        image = cv2.imread(png_out_path + filename, 0)
+        image = cv2.imread(png_out_path + 'extracted_png_brain/' + fullname, 0)
         image = cv2.resize(image, (512, 512))
-        #image_up = cv2.imread(png_out_path + filename_up, 0) #we use one window for now
-        #image_up = cv2.resize(image_up, (512, 512))
-        #image_down = cv2.imread(png_out_path + filename_down, 0)
-        #image_down = cv2.resize(image_down, (512, 512))
+        image_up = cv2.imread(png_out_path + 'extracted_png_subdural/' + fullname, 0) #we use one window for now
+        image_up = cv2.resize(image_up, (512, 512))
+        image_down = cv2.imread(png_out_path +  'extracted_png_bone/' + fullname, 0)
+        image_down = cv2.resize(image_down, (512, 512))
 
-        #image_cat = np.concatenate([image_up[:,:,np.newaxis], image[:,:,np.newaxis], image_down[:,:,np.newaxis]],2)
+        image_cat = np.concatenate([image_up[:,:,np.newaxis], image[:,:,np.newaxis], image_down[:,:,np.newaxis]],2)
         label = torch.FloatTensor(study_train_df[study_train_df['filename']==filename].loc[:, 'any': 'KANAMA'].values)
-        image_cat = image
         if random.random() < 0.5:
             image_cat = cv2.cvtColor(image_cat, cv2.COLOR_BGR2RGB)
 
@@ -108,9 +116,18 @@ class Dataset_val_by_study_context(data.Dataset):
         
         filename = self.name_list[idx % len(self.name_list)]
         filename_train_df = self.df[self.df['filename']==filename]
-        study_name = filename_train_df['filename'].values[0]
+        study_name = filename_train_df['filename'].values
         #study_index = int(filename_train_df['slice_id'].values[0].split('_')[-1])
-        study_train_df = self.df[self.df['filename']==study_name]
+        study_train_df = self.df[self.df['filename']==int(study_name)]
+        filename = study_train_df['filename'].values
+        if study_train_df['any'].values == 0:
+            fullname = str(filename[0]) + '_0.png'
+        elif study_train_df['ISKEMI'].values == 1:
+            fullname = str(filename[0]) + '_1.png'
+        elif study_train_df['KANAMA'].values == 1:
+            fullname = str(filename[0]) + '_2.png'
+        else:
+            print("Error wrong image label")
         """
         if study_index == (study_train_df.shape[0]-1):
             filename_up = filename
@@ -128,16 +145,16 @@ class Dataset_val_by_study_context(data.Dataset):
         image_down = cv2.imread(png_out_path + filename_down, 0)
         image_down = cv2.resize(image_down, (512, 512))
         """
-        image = cv2.imread(png_out_path + filename, 0)
+        image = cv2.imread(png_out_path + fullname, 0)
         image = cv2.resize(image, (512, 512))
         #image_cat = np.concatenate([image_up[:,:,np.newaxis], image[:,:,np.newaxis], image_down[:,:,np.newaxis]],2)
         image_cat = image
         label = torch.FloatTensor(study_train_df[study_train_df['filename']==filename].loc[:, 'any':'KANAMA'].values)
         image_cat = aug_image(image_cat, is_infer=True)
 
-        if self.transform is not None:
-            augmented = self.transform(image=image_cat)
-            image_cat = augmented['image'].transpose(2, 0, 1)
+        #if self.transform is not None:
+        #    augmented = self.transform(image=image_cat)
+        #    image_cat = augmented['image'].transpose(2, 0, 1)
 
         return image_cat, label
 
@@ -225,7 +242,7 @@ def random_erasing(img, probability=0.5, sl=0.02, sh=0.4, r1=0.3):
             x1 = random.randint(0, img.shape[0] - h)
             y1 = random.randint(0, img.shape[1] - w)
             if img.shape[2] == 3:
-                img[x1:x1 + h, y1:y1 + w, :] = 0.0
+                img[x1:x1 + h, y1:y1 + w,:] = 0.0
             else:
                 print('!!!!!!!! random_erasing dim wrong!!!!!!!!!!!')
                 return
@@ -241,7 +258,7 @@ def randomShiftScaleRotate(image,
                            borderMode=cv2.BORDER_CONSTANT, u=0.5):
 
     if np.random.random() < u:
-        height, width, channel = image.shape
+        height, width, channels = image.shape
 
         angle = np.random.uniform(rotate_limit[0], rotate_limit[1])
         scale = np.random.uniform(1 + scale_limit[0], 1 + scale_limit[1])

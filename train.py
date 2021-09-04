@@ -110,12 +110,12 @@ def train(model_name, image_size):
         train_loader, val_loader = generate_dataset_loader(df_all, c_train, train_transform, train_batch_size, c_val, val_transform, val_batch_size, workers)
 
         model = eval(model_name+'()')
-        model = model.cuda()
+        model = model#.cuda()
 
         optimizer = torch.optim.Adam(model.parameters(), lr=0.0005, betas=(0.9, 0.999), eps=1e-08, weight_decay=0.00002)
         scheduler = WarmRestart(optimizer, T_max=5, T_mult=1, eta_min=1e-5)
         model = torch.nn.DataParallel(model)
-        loss_cls = torch.nn.BCEWithLogitsLoss(pos_weight = torch.FloatTensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0]).cuda())
+        loss_cls = torch.nn.BCEWithLogitsLoss(pos_weight = torch.FloatTensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0]))#.cuda())
 
         trMaxEpoch = 80
         for epochID in range (0, trMaxEpoch):
@@ -141,8 +141,8 @@ def train(model_name, image_size):
 
                 print(str(batchID) + '/' + str(int(len(c_train)/train_batch_size)) + '     ' + str((time.time()-ss_time)/(batchID+1)), end='\r')
                 varInput = torch.autograd.Variable(input)
-                target = target.view(-1, 3).contiguous().cuda() #change to 3 in ourcase
-                varTarget = torch.autograd.Variable(target.contiguous().cuda())
+                target = target.view(-1, 3).contiguous()#.cuda() #change to 3 in ourcase
+                varTarget = torch.autograd.Variable(target.contiguous())#.cuda())
                 varOutput = model(varInput)
                 lossvalue = loss_cls(varOutput, varTarget)
                 trainLoss = trainLoss + lossvalue.item()
