@@ -113,12 +113,9 @@ class Dataset_val_by_study_context(data.Dataset):
         self.transform = transform
 
     def __getitem__(self, idx):
-        
-        filename = self.name_list[idx % len(self.name_list)]
-        filename_train_df = self.df[self.df['filename']==filename]
-        study_name = filename_train_df['filename'].values
-        #study_index = int(filename_train_df['slice_id'].values[0].split('_')[-1])
-        study_train_df = self.df[self.df['filename']==int(study_name)]
+
+        study_name = self.name_list[idx % len(self.name_list)]
+        study_train_df = self.df[self.df['filename'] == int(study_name)]
         filename = study_train_df['filename'].values
         if study_train_df['any'].values == 0:
             fullname = str(filename[0]) + '_0.png'
@@ -128,33 +125,20 @@ class Dataset_val_by_study_context(data.Dataset):
             fullname = str(filename[0]) + '_2.png'
         else:
             print("Error wrong image label")
-        """
-        if study_index == (study_train_df.shape[0]-1):
-            filename_up = filename
-        else:
-            slice_id_up = study_name + '_' + str(study_index+1)
-            filename_up = study_train_df[study_train_df['slice_id']==slice_id_up]['filename'].values[0]
-
-        if study_index == 0:
-            filename_down = filename
-        else:
-            slice_id_down = study_name + '_' + str(study_index-1)
-            filename_down = study_train_df[study_train_df['slice_id']==slice_id_down]['filename'].values[0]
-        image_up = cv2.imread(png_out_path + filename_up, 0)
-        image_up = cv2.resize(image_up, (512, 512))
-        image_down = cv2.imread(png_out_path + filename_down, 0)
-        image_down = cv2.resize(image_down, (512, 512))
-        """
-        image = cv2.imread(png_out_path + fullname, 0)
+        image = cv2.imread(png_out_path + 'extracted_png_brain/' + fullname, 0)
         image = cv2.resize(image, (512, 512))
-        #image_cat = np.concatenate([image_up[:,:,np.newaxis], image[:,:,np.newaxis], image_down[:,:,np.newaxis]],2)
-        image_cat = image
+        image_up = cv2.imread(png_out_path + 'extracted_png_subdural/' + fullname, 0) #we use one window for now
+        image_up = cv2.resize(image_up, (512, 512))
+        image_down = cv2.imread(png_out_path +  'extracted_png_bone/' + fullname, 0)
+        image_down = cv2.resize(image_down, (512, 512))
+
+        image_cat = np.concatenate([image_up[:,:,np.newaxis], image[:,:,np.newaxis], image_down[:,:,np.newaxis]],2)
         label = torch.FloatTensor(study_train_df[study_train_df['filename']==filename].loc[:, 'any':'KANAMA'].values)
         image_cat = aug_image(image_cat, is_infer=True)
 
-        #if self.transform is not None:
-        #    augmented = self.transform(image=image_cat)
-        #    image_cat = augmented['image'].transpose(2, 0, 1)
+        if self.transform is not None:
+            augmented = self.transform(image=image_cat)
+            image_cat = augmented['image'].transpose(2, 0, 1)
 
         return image_cat, label
 

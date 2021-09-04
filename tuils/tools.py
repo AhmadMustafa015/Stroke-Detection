@@ -68,7 +68,7 @@ def search_f1(output, target):
 
     return max_threshold_list, max_result_f1_list, precision_list, recall_list
 
-def weighted_log_loss(output, target, weight=[1,1,1,1,1,1]):
+def weighted_log_loss(output, target, weight=[1,1,1]):
 
     loss = torch.nn.BCELoss()
     loss_list = []
@@ -84,7 +84,7 @@ def weighted_log_loss(output, target, weight=[1,1,1,1,1,1]):
 
     return loss_list, loss_sum
 
-def weighted_log_loss_numpy(output, target, weight=[1,1,1,1,1,1]):
+def weighted_log_loss_numpy(output, target, weight=[1,1,1]):
 
     loss_list = []
     for i in range(output.shape[1]):

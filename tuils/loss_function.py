@@ -27,7 +27,7 @@ class BinaryEntropyLoss_weight(nn.Module):
         self.weight = weight
         self.size_average = size_average
         self.is_weight = is_weight
-        self.class_num = np.array([[2.0, 1.0, 1.0, 1.0, 1.0, 1.0]])
+        self.class_num = np.array([[2.0, 1.0, 1.0]])
         # self.class_num = np.power((1-self.class_num/50000), 2)
         # print(target.shape)
 
