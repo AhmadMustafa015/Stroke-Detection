@@ -5,3 +5,4 @@
 *.dcm
 *.csv
 settings.py
+*.pth
