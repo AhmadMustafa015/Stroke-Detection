@@ -1,3 +1,4 @@
+import glob
 import os
 import time
 import pandas as pd
@@ -33,6 +34,8 @@ import sklearn
 import copy
 torch.backends.cudnn.benchmark = True
 import argparse
+from shutil import copyfile
+
 
 def epochVal(model, dataLoader, loss_cls, c_val, val_batch_size):
     model.eval ()
@@ -181,7 +184,7 @@ def train(model_name, image_size):
         del model
 
 def valid_snapshot(model_name, image_size):
-    dir = r'./DenseNet121_change_avg_256'
+    dir = r'./data_test/DenseNet121_change_avg_256'
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
     header = ['Epoch', 'Learning rate', 'Time', 'Train Loss', 'Val Loss']
@@ -192,19 +195,18 @@ def valid_snapshot(model_name, image_size):
             writer.writerow(header)
     df_all = pd.read_csv(csv_path)
 
-    kfold_path_val = '../data/fold_5_by_study_image/'
+    kfold_path_val = './output/test.txt'
     loss_cls = torch.nn.BCEWithLogitsLoss(pos_weight=torch.FloatTensor([1.0, 1.0, 1.0]).cuda())
-    for num_fold in range(5):
+    log_loss_all = []
+    for path in glob.glob(dir + '/*.pth'):
+        num_fold = 0
         print('fold_num:', num_fold)
-
-        ckpt = r'model_epoch_best_'+str(num_fold)+'.pth'
-        ckpt = os.path.join(dir,ckpt)
 
         with open(snapshot_path + '/log.csv', 'a', newline='') as f:
             writer = csv.writer(f)
             writer.writerow([num_fold])
 
-        f_val = open(kfold_path_val + 'fold' + str(num_fold) + '/val.txt', 'r')
+        f_val = open(kfold_path_val, 'r')
         c_val = f_val.readlines()
         f_val.close()
         c_val = [s.replace('\n', '') for s in c_val]
@@ -231,9 +233,9 @@ def valid_snapshot(model_name, image_size):
         model = model.cuda()
         model = torch.nn.DataParallel(model)
 
-        if ckpt is not None:
-            print(ckpt)
-            model.load_state_dict(torch.load(ckpt, map_location=lambda storage, loc: storage)["state_dict"])
+        if path is not None:
+            print(path)
+            model.load_state_dict(torch.load(path, map_location=lambda storage, loc: storage)["state_dict"])
 
         valLoss, auc, loss_list, loss_sum = epochVal(model, val_loader, loss_cls, c_val, val_batch_size)
 
@@ -242,11 +244,21 @@ def valid_snapshot(model_name, image_size):
                   'loss:', loss_list,
                   loss_sum]
 
-        with open(ckpt + '_log.csv', 'a', newline='') as f:
+        with open(path + '_log.csv', 'a', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(result)
         print(result)
-
+        log_loss_all.append([path,valLoss])
+    val_best = 0
+    val_best_path = ''
+    ckpt_best = r'model_epoch_best_' + str(num_fold) + '.pth'
+    ckpt_best = os.path.join(dir, ckpt_best)
+    for val_vale in log_loss_all:
+        if val_vale[1] < val_best:
+            val_best = val_vale
+            val_best_path = val_vale[0]
+    print(val_best, '\t', val_best_path)
+    copyfile(val_best_path, ckpt_best)
 
 if __name__ == '__main__':
     csv_path = 'output/train.csv'
@@ -269,5 +281,5 @@ if __name__ == '__main__':
     print('train batch size:', train_batch_size)
     print('val batch size:', val_batch_size)
     snapshot_path = 'data_test/' + args.model_save_path.replace('\n', '').replace('\r', '')
-    train(backbone, Image_size)
-    # valid_snapshot(backbone, Image_size)
+    #train(backbone, Image_size)
+    valid_snapshot(backbone, Image_size)
