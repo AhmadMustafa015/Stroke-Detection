@@ -6,6 +6,7 @@ import time
 import cv2
 from sklearn.metrics import log_loss
 import torch
+import torch.nn as nn
 
 
 def computeAUROC(dataGT, dataPRED, classCount):
@@ -98,3 +99,19 @@ def weighted_log_loss_numpy(output, target, weight=[1,1,1]):
     loss_sum = round(loss_sum, 4)
 
     return loss_list, loss_sum
+
+class DiceLoss(nn.Module):
+
+    def __init__(self):
+        super(DiceLoss, self).__init__()
+        self.smooth = 1.0
+
+    def forward(self, y_pred, y_true):
+        assert y_pred.size() == y_true.size()
+        y_pred = y_pred[:, 0].contiguous().view(-1)
+        y_true = y_true[:, 0].contiguous().view(-1)
+        intersection = (y_pred * y_true).sum()
+        dsc = (2. * intersection + self.smooth) / (
+            y_pred.sum() + y_true.sum() + self.smooth
+        )
+        return 1. - dsc

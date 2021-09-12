@@ -80,4 +80,13 @@ class DenseNet121_change_avg(nn.Module):
         x = self.mlp(x)
         
         return x
+class unet_brain_seg(nn.Module):
+    def __init__(self):
+        super(unet_brain_seg, self).__init__()
+        self.unet = torch.hub.load('mateuszbuda/brain-segmentation-pytorch', 'unet',
+    in_channels=3, out_channels=2, init_features=32, pretrained=True)
+
+    def forward(self, x):
+        x = self.unet(x)
+        return x
 
