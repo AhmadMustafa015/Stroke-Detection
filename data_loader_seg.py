@@ -1,8 +1,12 @@
+import torch.utils.data as data
+import torch
 import albumentations
 import cv2
 import numpy as np
 import random
 import math
+from keras.utils import to_categorical
+import settings
 from settings import png_out_path
 
 def generate_transforms(image_size):
@@ -31,6 +35,110 @@ def generate_random_list(length):
         new_list += [i]*weight
 
     return new_list
+
+
+class Dataset_train_by_study_context(data.Dataset):
+    def __init__(self,
+                 df=None,
+                 name_list=None,
+                 transform=None
+                 ):
+        self.df = df  # [df['filename'].isin(name_list)]
+        self.name_list = name_list
+        self.transform = transform
+
+    def __getitem__(self, idx):
+        study_name = self.name_list[idx % len(self.name_list)]
+        study_train_df = self.df[self.df['filename'] == int(study_name)]
+        # study_index = random.choice(generate_random_list(study_train_df.shape[0]-1))
+
+        # slice_id = study_name + '_' + str(study_index)
+        filename = study_train_df['filename'].values
+        if study_train_df['any'].values == 0:
+            fullname = str(filename[0]) + '_0.png'
+            assert False, "Error: Segmentation Training for stroke cases"
+            #dicom_path + ISKEMI\MASK\ + str(filename[0]) + '.png'
+        elif study_train_df['ISKEMI'].values == 1:
+            fullname = str(filename[0]) + '_1.png'
+            label = np.array(cv2.imread(settings.dicom_path + 'ISKEMI/MASK/' + str(filename[0]) + '.png', 0))
+        elif study_train_df['KANAMA'].values == 1:
+            fullname = str(filename[0]) + '_2.png'
+            label = np.array(cv2.imread(settings.dicom_path + 'KANAMA/MASK/' + str(filename[0]) + '.png', 0))
+        else:
+            print("Error wrong image label")
+        image = cv2.imread(png_out_path + 'extracted_png_brain/' + fullname, 0)
+        image = cv2.resize(image, (512, 512))
+        image_up = cv2.imread(png_out_path + 'extracted_png_subdural/' + fullname, 0)  # we use one window for now
+        image_up = cv2.resize(image_up, (512, 512))
+        image_down = cv2.imread(png_out_path + 'extracted_png_bone/' + fullname, 0)
+        image_down = cv2.resize(image_down, (512, 512))
+
+        image_cat = np.concatenate([image_up[:, :, np.newaxis], image[:, :, np.newaxis], image_down[:, :, np.newaxis]],
+                                   2)
+        label = to_categorical(label, num_classes=2).astype(np.uint8)[1:] #Remove background #multi-class segmentation
+
+        if random.random() < 0.5:
+            image_cat = cv2.cvtColor(image_cat, cv2.COLOR_BGR2RGB)
+
+        image_cat = aug_image(image_cat, is_infer=False)
+
+        if self.transform is not None:
+            augmented = self.transform(image=image_cat)
+            image_cat = augmented['image'].transpose(2, 0, 1)
+
+        # print(label)
+        # exit(0)
+
+        return image_cat, label
+
+    def __len__(self):
+        return len(self.name_list) * 4
+
+
+class Dataset_val_by_study_context(data.Dataset):
+    def __init__(self,
+                 df=None,
+                 name_list=None,
+                 transform=None
+                 ):
+        self.df = df
+        self.name_list = name_list
+        self.transform = transform
+
+    def __getitem__(self, idx):
+
+        study_name = self.name_list[idx % len(self.name_list)]
+        study_train_df = self.df[self.df['filename'] == int(study_name)]
+        filename = study_train_df['filename'].values
+        if study_train_df['any'].values == 0:
+            fullname = str(filename[0]) + '_0.png'
+        elif study_train_df['ISKEMI'].values == 1:
+            fullname = str(filename[0]) + '_1.png'
+        elif study_train_df['KANAMA'].values == 1:
+            fullname = str(filename[0]) + '_2.png'
+        else:
+            print("Error wrong image label")
+        image = cv2.imread(png_out_path + 'extracted_png_brain/' + fullname, 0)
+        image = cv2.resize(image, (512, 512))
+        image_up = cv2.imread(png_out_path + 'extracted_png_subdural/' + fullname, 0)  # we use one window for now
+        image_up = cv2.resize(image_up, (512, 512))
+        image_down = cv2.imread(png_out_path + 'extracted_png_bone/' + fullname, 0)
+        image_down = cv2.resize(image_down, (512, 512))
+
+        image_cat = np.concatenate([image_up[:, :, np.newaxis], image[:, :, np.newaxis], image_down[:, :, np.newaxis]],
+                                   2)
+        label = torch.FloatTensor(study_train_df[study_train_df['filename'] == filename].loc[:, 'any':'KANAMA'].values)
+        image_cat = aug_image(image_cat, is_infer=True)
+
+        if self.transform is not None:
+            augmented = self.transform(image=image_cat)
+            image_cat = augmented['image'].transpose(2, 0, 1)
+
+        return image_cat, label
+
+    def __len__(self):
+        return len(self.name_list)
+
 def randomHorizontalFlip(image, u=0.5):
     if np.random.random() < u:
         image = cv2.flip(image, 1)
@@ -178,3 +286,27 @@ def aug_image(image, is_infer=False):
         ratio = random.uniform(0.6,0.99)
         image = random_cropping(image, ratio=ratio, is_random=True)
         return image
+
+
+
+def generate_dataset_loader(df_all, c_train, train_transform, train_batch_size, c_val, val_transform, val_batch_size, workers):
+    train_dataset = Dataset_train_by_study_context(df_all, c_train, train_transform)
+    val_dataset = Dataset_val_by_study_context(df_all, c_val, val_transform)
+
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=train_batch_size,
+        shuffle=True,
+        num_workers=workers,
+        pin_memory=True,
+        drop_last=True)
+
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset,
+        batch_size=val_batch_size,
+        shuffle=False,
+        num_workers=workers,
+        pin_memory=True,
+        drop_last=False)
+
+    return train_loader, val_loader
