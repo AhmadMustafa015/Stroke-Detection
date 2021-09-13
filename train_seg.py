@@ -77,7 +77,8 @@ def train(model_name,image_size):
             writer = csv.writer(f)
             writer.writerow(header)
     df_all = pd.read_csv(csv_path)
-
+    df_all_filtered = df_all[df_all['any'] == 0]
+    df_all = df_all[df_all['any'] == 1]
     kfold_path_train = 'output/fold_5_by_study/'
     kfold_path_val = 'output/fold_5_by_study/'
     num_fold = 0 #for now
@@ -93,6 +94,12 @@ def train(model_name,image_size):
     f_val.close()
     c_train = [s.replace('\n', '') for s in c_train]
     c_val = [s.replace('\n', '') for s in c_val]
+    for index, row in df_all_filtered.iterrows():
+        if row['filename'].value in c_train:
+            c_train.remove(row['filename'].value)
+        if row['filename'].value in c_val:
+            c_val.remove(row['filename'].value)
+
 
     # for debug
     # c_train = c_train[0:1000]
@@ -104,9 +111,9 @@ def train(model_name,image_size):
         writer.writerow(['train dataset:', len(c_train), '  val dataset:', len(c_val)])
         writer.writerow(['train_batch_size:', train_batch_size, 'val_batch_size:', val_batch_size])
 
-    train_transform, val_transform = generate_transforms(image_size)
+    train_transform, val_transform, train_mask_transform, val_mask_transform = generate_transforms(image_size)
     train_loader, val_loader = generate_dataset_loader(df_all, c_train, train_transform, train_batch_size, c_val,
-                                                       val_transform, val_batch_size, workers)
+                                                       val_transform, val_batch_size, workers,train_mask_transform, val_mask_transform)
 
     loaders = {"train": train_loader, "valid": val_loader}
 

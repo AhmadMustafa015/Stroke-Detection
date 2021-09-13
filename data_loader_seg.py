@@ -16,13 +16,18 @@ def generate_transforms(image_size):
         albumentations.Resize(IMAGENET_SIZE, IMAGENET_SIZE),
         albumentations.Normalize(mean=(0.456, 0.456, 0.456), std=(0.224, 0.224, 0.224), max_pixel_value=255.0, p=1.0)
     ])
+    train_mask_transform = albumentations.Compose([
+        albumentations.Resize(IMAGENET_SIZE, IMAGENET_SIZE)
+    ])
 
     val_transform = albumentations.Compose([
         albumentations.Resize(IMAGENET_SIZE, IMAGENET_SIZE),
         albumentations.Normalize(mean=(0.456, 0.456, 0.456), std=(0.224, 0.224, 0.224), max_pixel_value=255.0, p=1.0)
     ])
-
-    return train_transform, val_transform
+    val_mask_transform = albumentations.Compose([
+        albumentations.Resize(IMAGENET_SIZE, IMAGENET_SIZE)
+    ])
+    return train_transform, val_transform, train_mask_transform, val_mask_transform
 def generate_random_list(length):
     new_list = []
 
@@ -41,12 +46,13 @@ class Dataset_train_by_study_context(data.Dataset):
     def __init__(self,
                  df=None,
                  name_list=None,
-                 transform=None
+                 transform=None,
+                 mask_trans=None
                  ):
         self.df = df  # [df['filename'].isin(name_list)]
         self.name_list = name_list
         self.transform = transform
-
+        self.mask_trans = mask_trans
     def __getitem__(self, idx):
         study_name = self.name_list[idx % len(self.name_list)]
         study_train_df = self.df[self.df['filename'] == int(study_name)]
@@ -75,19 +81,26 @@ class Dataset_train_by_study_context(data.Dataset):
 
         image_cat = np.concatenate([image_up[:, :, np.newaxis], image[:, :, np.newaxis], image_down[:, :, np.newaxis]],
                                    2)
-        label = to_categorical(label, num_classes=2).astype(np.uint8)[1:] #Remove background #multi-class segmentation
-
+        label = to_categorical(label, num_classes=2).astype(np.uint8) #multi-class segmentation
+        label = np.moveaxis(np.array(label), 3, 0)[1:]  #Remove background
         if random.random() < 0.5:
             image_cat = cv2.cvtColor(image_cat, cv2.COLOR_BGR2RGB)
 
-        image_cat = aug_image(image_cat, is_infer=False)
+        image_cat = aug_image(image_cat,label, is_infer=False)
 
         if self.transform is not None:
             augmented = self.transform(image=image_cat)
             image_cat = augmented['image'].transpose(2, 0, 1)
-
+            label_aug0 = self.mask_trans(image=label[0])
+            label_aug1 = self.mask_trans(image=label[1])
+            label[0] = label_aug0.transpose(2, 0, 1)
+            label[1] = label_aug1.transpose(2, 0, 1)
         # print(label)
         # exit(0)
+        #mask = mask.transpose(2, 0, 1)
+
+        #image_tensor = torch.from_numpy(image.astype(np.float32))
+        #mask_tensor = torch.from_numpy(mask.astype(np.float32))
 
         return image_cat, label
 
@@ -99,11 +112,13 @@ class Dataset_val_by_study_context(data.Dataset):
     def __init__(self,
                  df=None,
                  name_list=None,
-                 transform=None
+                 transform=None,
+                 mask_trans=None
                  ):
         self.df = df
         self.name_list = name_list
         self.transform = transform
+        self.mask_trans = mask_trans
 
     def __getitem__(self, idx):
 
@@ -112,10 +127,14 @@ class Dataset_val_by_study_context(data.Dataset):
         filename = study_train_df['filename'].values
         if study_train_df['any'].values == 0:
             fullname = str(filename[0]) + '_0.png'
+            assert False, "Error: Segmentation Training for stroke cases"
+            # dicom_path + ISKEMI\MASK\ + str(filename[0]) + '.png'
         elif study_train_df['ISKEMI'].values == 1:
             fullname = str(filename[0]) + '_1.png'
+            label = np.array(cv2.imread(settings.dicom_path + 'ISKEMI/MASK/' + str(filename[0]) + '.png', 0))
         elif study_train_df['KANAMA'].values == 1:
             fullname = str(filename[0]) + '_2.png'
+            label = np.array(cv2.imread(settings.dicom_path + 'KANAMA/MASK/' + str(filename[0]) + '.png', 0))
         else:
             print("Error wrong image label")
         image = cv2.imread(png_out_path + 'extracted_png_brain/' + fullname, 0)
@@ -127,35 +146,45 @@ class Dataset_val_by_study_context(data.Dataset):
 
         image_cat = np.concatenate([image_up[:, :, np.newaxis], image[:, :, np.newaxis], image_down[:, :, np.newaxis]],
                                    2)
-        label = torch.FloatTensor(study_train_df[study_train_df['filename'] == filename].loc[:, 'any':'KANAMA'].values)
-        image_cat = aug_image(image_cat, is_infer=True)
+        label = to_categorical(label, num_classes=2).astype(np.uint8)  #multi-class segmentation
+        label = np.moveaxis(np.array(label), 3, 0)[1:]  #Remove background
+        image_cat = aug_image(image_cat,label, is_infer=True)
 
         if self.transform is not None:
             augmented = self.transform(image=image_cat)
             image_cat = augmented['image'].transpose(2, 0, 1)
+            label_aug0 = self.mask_trans(image=label[0])
+            label_aug1 = self.mask_trans(image=label[1])
+            label[0] = label_aug0.transpose(2, 0, 1)
+            label[1] = label_aug1.transpose(2, 0, 1)
 
         return image_cat, label
 
     def __len__(self):
         return len(self.name_list)
 
-def randomHorizontalFlip(image, u=0.5):
+def randomHorizontalFlip(image,label, u=0.5):
     if np.random.random() < u:
         image = cv2.flip(image, 1)
-    return image
+        label[0] = cv2.flip(label[0], 1)
+        label[1] = cv2.flip(label[1], 1)
+    return image,label
 
-def randomVerticleFlip(image, u=0.5):
+def randomVerticleFlip(image,label, u=0.5):
     if np.random.random() < u:
         image = cv2.flip(image, 0)
-    return image
+        label[0] = cv2.flip(label[0], 0)
+        label[1] = cv2.flip(label[1], 0)
+    return image,label
 
-def randomRotate90(image, u=0.5):
+def randomRotate90(image,label, u=0.5):
     if np.random.random() < u:
         image[:,:,0:3] = np.rot90(image[:,:,0:3])
-    return image
+        label[0:2,:, :] = np.rot90(label[0:2, :, :])
+    return image,label
 
 #===================================================origin=============================================================
-def random_cropping(image, ratio=0.8, is_random = True):
+def random_cropping(image, label, ratio=0.8, is_random = True):
     height, width, _ = image.shape
     target_h = int(height*ratio)
     target_w = int(width*ratio)
@@ -166,12 +195,16 @@ def random_cropping(image, ratio=0.8, is_random = True):
     else:
         start_x = ( width - target_w ) // 2
         start_y = ( height - target_h ) // 2
-
+    zer_lab = np.asarray(label)
     zeros = image[start_y:start_y+target_h,start_x:start_x+target_w,:]
     zeros = cv2.resize(zeros ,(width,height))
-    return zeros
+    zer_lab[0] = label[0,start_y:start_y + target_h, start_x:start_x + target_w, :]
+    zer_lab[0] = cv2.resize(zer_lab[0], (width, height))
+    zer_lab[1] = label[1,start_y:start_y + target_h, start_x:start_x + target_w, :]
+    zer_lab[1] = cv2.resize(zer_lab[1], (width, height))
+    return zeros,zer_lab
 
-def cropping(image, ratio=0.8, code = 0):
+def cropping(image, label, ratio=0.8, code = 0):
     height, width, _ = image.shape
     target_h = int(height*ratio)
     target_w = int(width*ratio)
@@ -197,15 +230,20 @@ def cropping(image, ratio=0.8, code = 0):
         start_y = height - target_h
 
     elif code == -1:
-        return image
+        return image,label
 
     zeros = image[start_y:start_y+target_h,start_x:start_x+target_w,:]
     zeros = cv2.resize(zeros ,(width,height))
-    return zeros
+    zer_lab = np.asarray(label)
+    zer_lab[0] = label[0, start_y:start_y + target_h, start_x:start_x + target_w, :]
+    zer_lab[0] = cv2.resize(zer_lab[0], (width, height))
+    zer_lab[1] = label[1, start_y:start_y + target_h, start_x:start_x + target_w, :]
+    zer_lab[1] = cv2.resize(zer_lab[1], (width, height))
+    return zeros,zer_lab
 
-def random_erasing(img, probability=0.5, sl=0.02, sh=0.4, r1=0.3):
+def random_erasing(img,label, probability=0.5, sl=0.02, sh=0.4, r1=0.3):
     if random.uniform(0, 1) > probability:
-        return img
+        return img,label
 
     for attempt in range(100):
         area = img.shape[0] * img.shape[1]
@@ -221,14 +259,16 @@ def random_erasing(img, probability=0.5, sl=0.02, sh=0.4, r1=0.3):
             y1 = random.randint(0, img.shape[1] - w)
             if img.shape[2] == 3:
                 img[x1:x1 + h, y1:y1 + w,:] = 0.0
+                label[0,x1:x1 + h, y1:y1 + w, :] = 0.0
+                label[1,x1:x1 + h, y1:y1 + w, :] = 0.0
             else:
                 print('!!!!!!!! random_erasing dim wrong!!!!!!!!!!!')
                 return
 
-            return img
-    return img
+            return img,label
+    return img,label
 
-def randomShiftScaleRotate(image,
+def randomShiftScaleRotate(image, label,
                            shift_limit=(-0.0, 0.0),
                            scale_limit=(-0.0, 0.0),
                            rotate_limit=(-0.0, 0.0),
@@ -261,37 +301,48 @@ def randomShiftScaleRotate(image,
                                     borderValue=(
                                         0, 0,
                                         0,))
-    return image
+        label[0] = cv2.warpPerspective(label[0], mat, (width, height), flags=cv2.INTER_LINEAR, borderMode=borderMode,
+                                    borderValue=(
+                                        0, 0,
+                                        0,))
+        label[1] = cv2.warpPerspective(label[1], mat, (width, height), flags=cv2.INTER_LINEAR, borderMode=borderMode,
+                                    borderValue=(
+                                        0, 0,
+                                        0,))
+    return image,label
 
 
-def aug_image(image, is_infer=False):
+def aug_image(image,label, is_infer=False):
     if is_infer:
-        image = randomHorizontalFlip(image, u=0)
+        image = randomHorizontalFlip(image,label, u=0)
         image = np.asarray(image)
-        image = cropping(image, ratio=0.8, code=0)
+        label = np.asarray(label)
+        image = cropping(image,label, ratio=0.8, code=0)
         return image
 
     else:
-        image = randomHorizontalFlip(image)
+        image = randomHorizontalFlip(image,label)
         height, width, _ = image.shape
-        image = randomShiftScaleRotate(image,
+        image = randomShiftScaleRotate(image,label,
                                        shift_limit=(-0.1, 0.1),
                                        scale_limit=(-0.1, 0.1),
                                        aspect_limit=(-0.1, 0.1),
                                        rotate_limit=(-30, 30))
 
         image = cv2.resize(image, (width, height))
-        image = random_erasing(image, probability=0.5, sl=0.02, sh=0.4, r1=0.3)
+        label[0] = cv2.resize(label[0], (width, height))
+        label[1] = cv2.resize(label[1], (width, height))
+        image = random_erasing(image,label, probability=0.5, sl=0.02, sh=0.4, r1=0.3)
 
         ratio = random.uniform(0.6,0.99)
-        image = random_cropping(image, ratio=ratio, is_random=True)
-        return image
+        image = random_cropping(image, label, ratio=ratio, is_random=True)
+        return image,label
 
 
 
-def generate_dataset_loader(df_all, c_train, train_transform, train_batch_size, c_val, val_transform, val_batch_size, workers):
-    train_dataset = Dataset_train_by_study_context(df_all, c_train, train_transform)
-    val_dataset = Dataset_val_by_study_context(df_all, c_val, val_transform)
+def generate_dataset_loader(df_all, c_train, train_transform, train_batch_size, c_val, val_transform, val_batch_size, workers,train_mask_transform, val_mask_transform):
+    train_dataset = Dataset_train_by_study_context(df_all, c_train, train_transform, train_mask_transform)
+    val_dataset = Dataset_val_by_study_context(df_all, c_val, val_transform, val_mask_transform)
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
