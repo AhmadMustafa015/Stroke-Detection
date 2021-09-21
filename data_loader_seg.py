@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 import random
 import math
-from keras.utils import to_categorical
+from tensorflow.keras.utils import to_categorical
 import settings
 from settings import png_out_path
 
@@ -81,20 +81,22 @@ class Dataset_train_by_study_context(data.Dataset):
 
         image_cat = np.concatenate([image_up[:, :, np.newaxis], image[:, :, np.newaxis], image_down[:, :, np.newaxis]],
                                    2)
-        label = to_categorical(label, num_classes=2).astype(np.uint8) #multi-class segmentation
-        label = np.moveaxis(np.array(label), 3, 0)[1:]  #Remove background
+        label = to_categorical(label, num_classes=3).astype(np.uint8) #multi-class segmentation
+        label = np.moveaxis(np.array(label), 2, 0)[1:]  #Remove background
         if random.random() < 0.5:
             image_cat = cv2.cvtColor(image_cat, cv2.COLOR_BGR2RGB)
 
-        image_cat = aug_image(image_cat,label, is_infer=False)
+        image_cat,label = aug_image(image_cat,label, is_infer=False)
 
         if self.transform is not None:
             augmented = self.transform(image=image_cat)
-            image_cat = augmented['image'].transpose(2, 0, 1)
+            image_cat = augmented['image'].transpose(2, 0, 1) #same as np.moveaxis(a,-1,0)
             label_aug0 = self.mask_trans(image=label[0])
             label_aug1 = self.mask_trans(image=label[1])
-            label[0] = label_aug0.transpose(2, 0, 1)
-            label[1] = label_aug1.transpose(2, 0, 1)
+            label_10 = []
+            label_10.append(label_aug0['image'])
+            label_10.append(label_aug1['image'])
+            label = np.array(label_10)
         # print(label)
         # exit(0)
         #mask = mask.transpose(2, 0, 1)
@@ -146,17 +148,19 @@ class Dataset_val_by_study_context(data.Dataset):
 
         image_cat = np.concatenate([image_up[:, :, np.newaxis], image[:, :, np.newaxis], image_down[:, :, np.newaxis]],
                                    2)
-        label = to_categorical(label, num_classes=2).astype(np.uint8)  #multi-class segmentation
-        label = np.moveaxis(np.array(label), 3, 0)[1:]  #Remove background
-        image_cat = aug_image(image_cat,label, is_infer=True)
+        label = to_categorical(label, num_classes=3).astype(np.uint8)  #multi-class segmentation
+        label = np.moveaxis(np.array(label), 2, 0)[1:]  #Remove background
+        image_cat,label = aug_image(image_cat,label, is_infer=True)
 
         if self.transform is not None:
             augmented = self.transform(image=image_cat)
             image_cat = augmented['image'].transpose(2, 0, 1)
             label_aug0 = self.mask_trans(image=label[0])
             label_aug1 = self.mask_trans(image=label[1])
-            label[0] = label_aug0.transpose(2, 0, 1)
-            label[1] = label_aug1.transpose(2, 0, 1)
+            label_10 = []
+            label_10.append(label_aug0['image'])
+            label_10.append(label_aug1['image'])
+            label = np.array(label_10)
 
         return image_cat, label
 
@@ -195,13 +199,14 @@ def random_cropping(image, label, ratio=0.8, is_random = True):
     else:
         start_x = ( width - target_w ) // 2
         start_y = ( height - target_h ) // 2
-    zer_lab = np.asarray(label)
+    zer_lab = []
     zeros = image[start_y:start_y+target_h,start_x:start_x+target_w,:]
     zeros = cv2.resize(zeros ,(width,height))
-    zer_lab[0] = label[0,start_y:start_y + target_h, start_x:start_x + target_w, :]
+    zer_lab.append(label[0,start_y:start_y + target_h, start_x:start_x + target_w])
     zer_lab[0] = cv2.resize(zer_lab[0], (width, height))
-    zer_lab[1] = label[1,start_y:start_y + target_h, start_x:start_x + target_w, :]
+    zer_lab.append(label[1,start_y:start_y + target_h, start_x:start_x + target_w])
     zer_lab[1] = cv2.resize(zer_lab[1], (width, height))
+    zer_lab = np.array(zer_lab)
     return zeros,zer_lab
 
 def cropping(image, label, ratio=0.8, code = 0):
@@ -234,11 +239,12 @@ def cropping(image, label, ratio=0.8, code = 0):
 
     zeros = image[start_y:start_y+target_h,start_x:start_x+target_w,:]
     zeros = cv2.resize(zeros ,(width,height))
-    zer_lab = np.asarray(label)
-    zer_lab[0] = label[0, start_y:start_y + target_h, start_x:start_x + target_w, :]
+    zer_lab = []
+    zer_lab.append(label[0, start_y:start_y + target_h, start_x:start_x + target_w])
     zer_lab[0] = cv2.resize(zer_lab[0], (width, height))
-    zer_lab[1] = label[1, start_y:start_y + target_h, start_x:start_x + target_w, :]
+    zer_lab.append(label[1, start_y:start_y + target_h, start_x:start_x + target_w])
     zer_lab[1] = cv2.resize(zer_lab[1], (width, height))
+    zer_lab = np.array(zer_lab)
     return zeros,zer_lab
 
 def random_erasing(img,label, probability=0.5, sl=0.02, sh=0.4, r1=0.3):
@@ -259,8 +265,8 @@ def random_erasing(img,label, probability=0.5, sl=0.02, sh=0.4, r1=0.3):
             y1 = random.randint(0, img.shape[1] - w)
             if img.shape[2] == 3:
                 img[x1:x1 + h, y1:y1 + w,:] = 0.0
-                label[0,x1:x1 + h, y1:y1 + w, :] = 0.0
-                label[1,x1:x1 + h, y1:y1 + w, :] = 0.0
+                label[0,x1:x1 + h, y1:y1 + w] = 0.0
+                label[1,x1:x1 + h, y1:y1 + w] = 0.0
             else:
                 print('!!!!!!!! random_erasing dim wrong!!!!!!!!!!!')
                 return
@@ -301,41 +307,45 @@ def randomShiftScaleRotate(image, label,
                                     borderValue=(
                                         0, 0,
                                         0,))
-        label[0] = cv2.warpPerspective(label[0], mat, (width, height), flags=cv2.INTER_LINEAR, borderMode=borderMode,
+        label_conc = []
+        label_conc.append(cv2.warpPerspective(label[0], mat, (width, height), flags=cv2.INTER_LINEAR, borderMode=borderMode,
                                     borderValue=(
                                         0, 0,
-                                        0,))
-        label[1] = cv2.warpPerspective(label[1], mat, (width, height), flags=cv2.INTER_LINEAR, borderMode=borderMode,
+                                        0,)))
+        label_conc.append(cv2.warpPerspective(label[1], mat, (width, height), flags=cv2.INTER_LINEAR, borderMode=borderMode,
                                     borderValue=(
                                         0, 0,
-                                        0,))
+                                        0,)))
+        label = np.array(label_conc)
     return image,label
 
 
 def aug_image(image,label, is_infer=False):
     if is_infer:
-        image = randomHorizontalFlip(image,label, u=0)
+        image,label = randomHorizontalFlip(image,label, u=0)
         image = np.asarray(image)
         label = np.asarray(label)
-        image = cropping(image,label, ratio=0.8, code=0)
-        return image
+        image,label = cropping(image,label, ratio=0.8, code=0)
+        return image,label
 
     else:
-        image = randomHorizontalFlip(image,label)
+        image,label = randomHorizontalFlip(image,label)
         height, width, _ = image.shape
-        image = randomShiftScaleRotate(image,label,
+        image,label = randomShiftScaleRotate(image,label,
                                        shift_limit=(-0.1, 0.1),
                                        scale_limit=(-0.1, 0.1),
                                        aspect_limit=(-0.1, 0.1),
                                        rotate_limit=(-30, 30))
 
         image = cv2.resize(image, (width, height))
-        label[0] = cv2.resize(label[0], (width, height))
-        label[1] = cv2.resize(label[1], (width, height))
-        image = random_erasing(image,label, probability=0.5, sl=0.02, sh=0.4, r1=0.3)
+        label_conc = []
+        label_conc.append(cv2.resize(label[0], (width, height)))
+        label_conc.append(cv2.resize(label[1], (width, height)))
+        label = np.array(label_conc)
+        image,label = random_erasing(image,label, probability=0.5, sl=0.02, sh=0.4, r1=0.3)
 
         ratio = random.uniform(0.6,0.99)
-        image = random_cropping(image, label, ratio=ratio, is_random=True)
+        image,label = random_cropping(image, label, ratio=ratio, is_random=True)
         return image,label
 
 

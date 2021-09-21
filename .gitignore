@@ -6,3 +6,13 @@
 *.csv
 settings.py
 *.pth
+./rcnn/logs/*
+./rcnn/logs/*/*
+./rcnn/ilkdeneylog_lastdirectory/*/*
+*.DESKTOP*
+*.jpg
+*.json
+*.h5
+data_test
+dataset
+*.pyc

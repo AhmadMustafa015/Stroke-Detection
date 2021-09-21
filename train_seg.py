@@ -17,7 +17,7 @@ import torch.utils.data
 import torch.utils.data as data
 from tqdm import tqdm
 from net.models import *
-from dataset_loader import *
+from data_loader_seg import *
 from tuils.tools import *
 from tuils.lrs_scheduler import WarmRestart, warm_restart, AdamW, RAdam
 from tuils.loss_function import *
@@ -47,7 +47,7 @@ def epochVal(model, dataLoader, loss_cls, c_val, val_batch_size):
         if i == 0:
             ss_time = time.time()
         print(str(i) + '/' + str(int(len(c_val)/val_batch_size)) + '     ' + str((time.time()-ss_time)/(i+1)), end='\r')
-        target = target.view(-1, 3).contiguous().cuda()
+        target = target.contiguous().cuda()
         outGT = torch.cat((outGT, target), 0)
         varInput = torch.autograd.Variable(input)
         varTarget = torch.autograd.Variable(target.contiguous().cuda())
@@ -61,10 +61,11 @@ def epochVal(model, dataLoader, loss_cls, c_val, val_batch_size):
 
     valLoss = valLoss / lossValNorm
 
-    auc = computeAUROC(outGT, outPRED, 3)
-    auc = [round(x, 4) for x in auc]
-    loss_list, loss_sum = weighted_log_loss(outPRED, outGT)
-
+    #auc = computeAUROC(outGT, outPRED, 3)
+    #auc = [round(x, 4) for x in auc]
+    auc = 0
+    #loss_list, loss_sum = weighted_log_loss(outPRED, outGT)
+    loss_list, loss_sum = 1,1
     return valLoss, auc, loss_list, loss_sum
 
 def train(model_name,image_size):
@@ -95,10 +96,10 @@ def train(model_name,image_size):
     c_train = [s.replace('\n', '') for s in c_train]
     c_val = [s.replace('\n', '') for s in c_val]
     for index, row in df_all_filtered.iterrows():
-        if row['filename'].value in c_train:
-            c_train.remove(row['filename'].value)
-        if row['filename'].value in c_val:
-            c_val.remove(row['filename'].value)
+        if str(row['filename']) in c_train:
+            c_train.remove(str(row['filename']))
+        if str(row['filename']) in c_val:
+            c_val.remove(str(row['filename']))
 
 
     # for debug
@@ -125,7 +126,7 @@ def train(model_name,image_size):
     model = torch.nn.DataParallel(model)
     loss_cls = DiceLoss().cuda()
 
-    trMaxEpoch = 80
+    trMaxEpoch = 200
     for epochID in tqdm(range(0,trMaxEpoch), total=trMaxEpoch):
         epochID = epochID + 0
 
@@ -150,7 +151,7 @@ def train(model_name,image_size):
             print(str(batchID) + '/' + str(int(len(c_train) / train_batch_size)) + '     ' + str(
                 (time.time() - ss_time) / (batchID + 1)), end='\r')
             varInput = torch.autograd.Variable(input)
-            target = target.view(-1, 3).contiguous().cuda()  # change to 3 in ourcase
+            target = target.contiguous().cuda()  # change to 3 in ourcase
             varTarget = torch.autograd.Variable(target.contiguous().cuda())
             varOutput = model(varInput)
             lossvalue = loss_cls(varOutput, varTarget)
@@ -165,7 +166,7 @@ def train(model_name,image_size):
         trainLoss = trainLoss / lossTrainNorm
 
         if (epochID + 1) % 5 == 0 or epochID > 79 or epochID == 0:
-            valLoss, auc, loss_list, loss_sum = epochVal(model, val_loader, loss_cls, c_val, val_batch_size)
+            valLoss, _, _, _ = epochVal(model, val_loader, loss_cls, c_val, val_batch_size)
 
         epoch_time = time.time() - start_time
 
@@ -178,9 +179,9 @@ def train(model_name,image_size):
                   round(epoch_time, 0),
                   round(trainLoss, 5),
                   round(valLoss, 5),
-                  'auc:', auc,
-                  'loss:', loss_list,
-                  loss_sum]
+                  #'auc:', auc,
+                  #'loss:', loss_list,
+                  ]#loss_sum]
 
         print(result)
 
@@ -195,10 +196,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("-backbone", "--backbone", type=str, default='unet_brain_seg', help='backbone')
     parser.add_argument("-img_size", "--Image_size", type=int, default=256, help='image_size')
-    parser.add_argument("-tbs", "--train_batch_size", type=int, default=32, help='train_batch_size')
-    parser.add_argument("-vbs", "--val_batch_size", type=int, default=32, help='val_batch_size')
+    parser.add_argument("-tbs", "--train_batch_size", type=int, default=64, help='train_batch_size')
+    parser.add_argument("-vbs", "--val_batch_size", type=int, default=64, help='val_batch_size')
     parser.add_argument("-save_path", "--model_save_path", type=str,
-                        default='DenseNet169_change_avg', help='epoch')
+                        default='unet_brain_seg', help='epoch')
     args = parser.parse_args()
 
     Image_size = args.Image_size

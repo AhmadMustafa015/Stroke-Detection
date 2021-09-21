@@ -320,7 +320,7 @@ def predict(model, name_list, df_all, df_test, batch_size: int, n_test_aug: int,
 
             
         feature = feature.sigmoid()
-        all_outputs = torch.cat((all_outputs, feature.data), 0)
+        all_outputs = torch.cat((all_outputsall_outputs, feature.data), 0)
         all_names.extend(names)
 
     for key in features_list.keys():
