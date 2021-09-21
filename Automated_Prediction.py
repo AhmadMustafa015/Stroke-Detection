@@ -137,48 +137,45 @@ def epochVal(model, dataLoader,pred_batch_size,c_pred):
 
     return valLoss, auc, loss_list, loss_sum
 
-def classification_net():
-    if not os.path.isfile(snapshot_path + '/log.csv'):
-        with open(snapshot_path + '/log.csv', 'a', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(header)
-    df_all = pd.read_csv(csv_path)
-    kfold_path_val = './output/test.txt'
 
-    with open(snapshot_path + '/log.csv', 'a', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow([num_fold])
+class PredictionDatasetClass:
+    def __init__(self, name_list, df_train, df_test, n_test_aug, mode):
+        self.name_list = name_list
+        if mode == 'val':
+            self.df = df_train[df_train['filename'].isin(name_list)]
+        elif mode == 'test':
+            self.df = df_test[df_test['filename'].isin(name_list)]
+        self.n_test_aug = n_test_aug
+        self.mode = mode
 
-    f_val = open(kfold_path_val, 'r')
-    c_val = f_val.readlines()
-    f_val.close()
-    c_val = [s.replace('\n', '') for s in c_val]
+    def __len__(self):
+        return len(self.name_list) * self.n_test_aug
 
-    val_transform = albumentations.Compose([
-        albumentations.Resize(image_size, image_size),
-        albumentations.Normalize(mean=(0.456, 0.456, 0.456), std=(0.224, 0.224, 0.224), max_pixel_value=255.0,
-                                 p=1.0)
-    ])
-    val_dataset = Dataset_val_by_study_context(df_all, c_val, val_transform)
+    def __getitem__(self, idx):
+        if self.mode == 'val':
+            filename = self.name_list[idx % len(self.name_list)]
+            image_cat = cv2.imread('/home1/kaggle_rsna2019/process/train_concat_3images_256/' + filename)
+            label = torch.FloatTensor(self.df[self.df['filename'] == filename].loc[:, 'any':'subdural'].values)
 
-    val_loader = torch.utils.data.DataLoader(
-        val_dataset,
-        batch_size=val_batch_size,
+        if self.mode == 'test':
+            filename = self.name_list[idx % len(self.name_list)]
+            image_cat = cv2.imread('/home1/kaggle_rsna2019/process/stage2_test_concat_3images/' + filename)
+            image_cat = cv2.resize(image_cat, (256, 256))
+            label = torch.FloatTensor([0, 0, 0])
+
+        image_cat = aug_image(image_cat, is_infer=True)
+        image_cat = valid_transform_pure(image=image_cat)['image'].transpose(2, 0, 1)
+
+        return filename, image_cat, label
+
+def predict_classification():
+    loader = DataLoader(
+        dataset=PredictionDatasetPure(name_list, df_all, df_test, n_test_aug, mode),
         shuffle=False,
-        num_workers=workers,
-        pin_memory=True,
-        drop_last=False)
-
-    model = eval(model_name + '()')
-    model = model.cuda()
-    model = torch.nn.DataParallel(model)
-
-    if path is not None:
-        print(path)
-        model.load_state_dict(torch.load(path, map_location=lambda storage, loc: storage)["state_dict"])
-
-    valLoss, auc, loss_list, loss_sum = epochVal(model, val_loader, loss_cls, c_val, val_batch_size)
-
+        batch_size=batch_size,
+        num_workers=16,
+        pin_memory=True
+    )
 
 if __name__ == '__main__':
     #STEP1 :Preprocessing
@@ -186,6 +183,28 @@ if __name__ == '__main__':
     out_preprocessing_path = "" #make sure it end with /
     prepare_data(Input_path,out_preprocessing_path)
     #STEP2: Classification Network
+    model_name = "Dense"
+    model_snapshot_path = "./data_test/" + model_name + "/"
+    model = eval(model_name + '()')
+    model = nn.DataParallel(model).cuda()
+    state = torch.load(model_snapshot_path + 'model_epoch_best.pth')
+
+    epoch = state['epoch']
+    best_valid_loss = state['valLoss']
+    model.load_state_dict(state['state_dict'])
+    print(epoch, best_valid_loss)
+
+    model.eval()
+
+
+
+
+
+
+
+
+
+
     test_csv_path = ""
     Image_size = ""
     train_batch_size = args.train_batch_size
@@ -210,3 +229,24 @@ if __name__ == '__main__':
     #2,256,256
     #0 -> ISK
     #1 -> Hom
+
+
+def predict_segmentation():
+    input_image = Image.open(filename)
+    m, s = np.mean(input_image, axis=(0, 1)), np.std(input_image, axis=(0, 1))
+    preprocess = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize(mean=m, std=s),
+    ])
+    input_tensor = preprocess(input_image)
+    input_batch = input_tensor.unsqueeze(0)
+
+    if torch.cuda.is_available():
+        input_batch = input_batch.to('cuda')
+        model = model.to('cuda')
+
+    with torch.no_grad():
+        output = model(input_batch)
+
+    print(torch.round(output[0]))
+    print(torch.round(output[1]))
