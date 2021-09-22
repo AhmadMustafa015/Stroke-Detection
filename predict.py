@@ -178,29 +178,29 @@ valid_transform_pure = albumentations.Compose([
 ])
 
 class PredictionDatasetPure:
-    def __init__(self, name_list, df_train, df_test, n_test_aug, mode):
+    def __init__(self, name_list, n_test_aug, mode):
         self.name_list = name_list
-        if mode == 'val':
-            self.df = df_train[df_train['filename'].isin(name_list)]
-        elif mode == 'test':
-            self.df = df_test[df_test['filename'].isin(name_list)]
         self.n_test_aug = n_test_aug
         self.mode = mode
+        self.png_out_path = ""
 
     def __len__(self):
         return len(self.name_list) * self.n_test_aug
 
     def __getitem__(self, idx):
-        if self.mode == 'val':
-            filename = self.name_list[idx % len(self.name_list)]
-            image_cat = cv2.imread('/home1/kaggle_rsna2019/process/train_concat_3images_256/' + filename)
-            label = torch.FloatTensor(self.df[self.df['filename']==filename].loc[:, 'any':'subdural'].values)
+        filename = self.name_list[idx % len(self.name_list)]
+        image = cv2.imread(self.png_out_path + 'extracted_png_brain/' + filename + '.png', 0)
+        image = cv2.resize(image, (256, 256))
+        image_up = cv2.imread(self.png_out_path + 'extracted_png_subdural/' + filename + '.png',
+                              0)  # we use one window for now
+        image_up = cv2.resize(image_up, (256, 256))
+        image_down = cv2.imread(self.png_out_path + 'extracted_png_bone/' + filename + '.png', 0)
+        image_down = cv2.resize(image_down, (256, 256))
 
-        if self.mode == 'test':
-            filename = self.name_list[idx % len(self.name_list)]
-            image_cat = cv2.imread('/home1/kaggle_rsna2019/process/stage2_test_concat_3images/' + filename)
-            image_cat = cv2.resize(image_cat, (256, 256))
-            label = torch.FloatTensor([0,0,0,0,0,0])
+        image_cat = np.concatenate(
+            [image_up[:, :, np.newaxis], image[:, :, np.newaxis], image_down[:, :, np.newaxis]],
+            2)
+        label = torch.FloatTensor([0,0,0])
 
         image_cat = aug_image(image_cat, is_infer=True)
         image_cat = valid_transform_pure(image=image_cat)['image'].transpose(2, 0, 1)
@@ -208,29 +208,30 @@ class PredictionDatasetPure:
         return filename, image_cat, label
 
 class PredictionDatasetAug:
-    def __init__(self, name_list, df_train, df_test, n_test_aug, mode):
+    def __init__(self, name_list, n_test_aug, mode):
         self.name_list = name_list
-        if mode == 'val':
-            self.df = df_train[df_train['filename'].isin(name_list)]
-        elif mode == 'test':
-            self.df = df_test[df_test['filename'].isin(name_list)]
         self.n_test_aug = n_test_aug
         self.mode = mode
+        self.png_out_path = ""
 
     def __len__(self):
         return len(self.name_list) * self.n_test_aug
 
     def __getitem__(self, idx):
-        if self.mode == 'val':
-            filename = self.name_list[idx % len(self.name_list)]
-            image_cat = cv2.imread('/home1/kaggle_rsna2019/process/train_concat_3images_256/' + filename)
-            image_cat = cv2.resize(image_cat, (256, 256))
-            label = torch.FloatTensor(self.df[self.df['filename']==filename].loc[:, 'any':'subdural'].values)
-        if self.mode == 'test':
-            filename = self.name_list[idx % len(self.name_list)]
-            image_cat = cv2.imread('/home1/kaggle_rsna2019/process/stage2_test_concat_3images/' + filename)
-            image_cat = cv2.resize(image_cat, (256, 256))
-            label = torch.FloatTensor([0,0,0,0,0,0])
+
+        filename = self.name_list[idx % len(self.name_list)]
+        image = cv2.imread(self.png_out_path + 'extracted_png_brain/' + filename + '.png', 0)
+        image = cv2.resize(image, (256, 256))
+        image_up = cv2.imread(self.png_out_path + 'extracted_png_subdural/' + filename + '.png',
+                              0)  # we use one window for now
+        image_up = cv2.resize(image_up, (256, 256))
+        image_down = cv2.imread(self.png_out_path + 'extracted_png_bone/' + filename + '.png', 0)
+        image_down = cv2.resize(image_down, (256, 256))
+
+        image_cat = np.concatenate(
+            [image_up[:, :, np.newaxis], image[:, :, np.newaxis], image_down[:, :, np.newaxis]],
+            2)
+        label = torch.FloatTensor([0,0,0])
 
         if random.random() < 0.5:
             image_cat = cv2.cvtColor(image_cat, cv2.COLOR_BGR2RGB)
@@ -245,10 +246,10 @@ class PredictionDatasetAug:
         
         return filename, image_cat, label
 
-def predict(model, name_list, df_all, df_test, batch_size: int, n_test_aug: int, aug=False, mode='val', fold=0):
+def predict(model, name_list, batch_size: int, n_test_aug: int, aug=False, mode='val', fold=0):
     if aug:
         loader = DataLoader(
-            dataset=PredictionDatasetAug(name_list, df_all, df_test, n_test_aug, mode),
+            dataset=PredictionDatasetAug(name_list, n_test_aug, mode),
             shuffle=False,
             batch_size=batch_size,
             num_workers=16,
@@ -256,7 +257,7 @@ def predict(model, name_list, df_all, df_test, batch_size: int, n_test_aug: int,
         )
     else:
         loader = DataLoader(
-            dataset=PredictionDatasetPure(name_list, df_all, df_test, n_test_aug, mode),
+            dataset=PredictionDatasetPure(name_list, n_test_aug, mode),
             shuffle=False,
             batch_size=batch_size,
             num_workers=16,
@@ -271,7 +272,7 @@ def predict(model, name_list, df_all, df_test, batch_size: int, n_test_aug: int,
 
     features_list = {}
     for names, inputs, labels in tqdm(loader, desc='Predict'):
-        labels = labels.view(-1, 6).contiguous().cuda(async=True)
+        labels = labels.view(-1, 3).contiguous().cuda(async=True)
         all_truth = torch.cat((all_truth, labels), 0)
         with torch.no_grad():
             inputs = torch.autograd.variable(inputs).cuda(async=True)
@@ -320,7 +321,7 @@ def predict(model, name_list, df_all, df_test, batch_size: int, n_test_aug: int,
 
             
         feature = feature.sigmoid()
-        all_outputs = torch.cat((all_outputsall_outputs, feature.data), 0)
+        all_outputs = torch.cat((all_outputs, feature.data), 0)
         all_names.extend(names)
 
     for key in features_list.keys():
@@ -387,91 +388,24 @@ def predict_all(model_name, image_size):
         print(epoch, best_valid_loss)
 
         model.eval()
-        
-        if is_center:
-            val_p, val_names, val_truth = predict(model, c_val, df_all, df_test, batch_size, 1, False, 'val', fold)
-            val_predictions, val_image_names, val_truth = group_aug(val_p, val_names, val_truth)
-            val_loss, val_loss_sum = weighted_log_loss_numpy(val_predictions, val_truth)
-            print('val_loss = ', val_loss, 'val_loss_sum = ', val_loss_sum)
-            
-            df = pd.DataFrame(data=val_predictions,  columns=['any', 'epidural', 'intraparenchymal', 'intraventricular', 'subarachnoid', 'subdural'])
-            df['filename'] = val_image_names
-            df.to_csv(prediction_path + '_val_center.csv')
 
         if is_aug:
-            val_p_aug, val_names_aug, val_truth_aug = predict(model, c_val, df_all, df_test, batch_size, num_aug, True, 'val', fold)
-            val_predictions_aug, val_image_names_aug, val_truth_aug = group_aug(val_p_aug, val_names_aug, val_truth_aug)
-            val_loss_aug, val_loss_sum_aug = weighted_log_loss_numpy(val_predictions_aug, val_truth_aug)
-            print('val_loss_aug = ', val_loss_aug, 'val_loss_sum_aug = ', val_loss_sum_aug)
-            df = pd.DataFrame(data=val_predictions_aug,  columns=['any', 'epidural', 'intraparenchymal', 'intraventricular', 'subarachnoid', 'subdural'])
-            df['filename'] = val_image_names_aug
-            df.to_csv(prediction_path + '_val_aug_{num_aug}.csv'.format(num_aug=num_aug))
-
-            test_p_aug, test_names_aug, test_truth_aug = predict(model, c_test, df_all, df_test, batch_size, num_aug, True, 'test', fold)
+            test_p_aug, test_names_aug, test_truth_aug = predict(model, batch_size, num_aug, True, 'test', fold)
             test_predictions_aug, test_image_names_aug, test_truth_aug = group_aug(test_p_aug, test_names_aug, test_truth_aug)
 
             df = pd.DataFrame(data=test_predictions_aug,  columns=['any', 'epidural', 'intraparenchymal', 'intraventricular', 'subarachnoid', 'subdural'])
             df['filename'] = test_image_names_aug
             df.to_csv(prediction_path + '_test_aug_{num_aug}.csv'.format(num_aug=num_aug))
-            
 
-        with open(model_snapshot_path + 'prediction/{model_name}.csv'.format(model_name=model_name), 'a', newline='') as f:
-            writer = csv.writer(f)
-            if is_center:
-                writer.writerow([fold, 1, val_loss, val_loss_sum])  
-            if is_aug:
-                writer.writerow([fold, num_aug, val_loss_aug, val_loss_sum_aug])  
 
-    val_lists_center = []
-    test_lists_center = []
-    val_lists_aug = []
     test_lists_aug = []
 
     prediction_path = model_snapshot_path + 'prediction/'
     for fold in range(5):
-        if is_center:
-            df_val_center = pd.read_csv(prediction_path + 'fold_{fold}_val_center.csv'.format(fold=fold), index_col=0 )
-            val_lists_center.append(df_val_center)
-            df_test_center = pd.read_csv(prediction_path + 'fold_{fold}_test_center.csv'.format(fold=fold), index_col=0)
-            test_lists_center.append(df_test_center)
-
         if is_aug:
-            df_val_aug = pd.read_csv(prediction_path + 'fold_{fold}_val_aug_{num_aug}.csv'.format(fold=fold, num_aug=num_aug), index_col=0)
-            val_lists_aug.append(df_val_aug)
             df_test_aug = pd.read_csv(prediction_path + 'fold_{fold}_test_aug_{num_aug}.csv'.format(fold=fold, num_aug=num_aug), index_col=0)
             test_lists_aug.append(df_test_aug)
 
-    if is_center:
-        df_val_center = pd.concat(val_lists_center)
-        df_val_center = df_val_center.sort_values(by='filename').reset_index(drop = True)
-        df_val_center.to_csv(prediction_path + 'val_center.csv', index=0)
-
-        val_predictions_center = df_val_center.loc[:, ['any', 'epidural', 'intraparenchymal', 'intraventricular', 'subarachnoid', 'subdural']].values
-        val_loss_center, val_loss_sum_center = weighted_log_loss_numpy(val_predictions_center, val_truth_oof)
-        print('center: ', val_loss_center, val_loss_sum_center)
-
-    if is_aug:
-        df_val_aug = pd.concat(val_lists_aug)
-        df_val_aug = df_val_aug.sort_values(by='filename').reset_index(drop = True)
-        df_val_aug.to_csv(prediction_path + 'val_aug_{num_aug}.csv'.format(num_aug=num_aug), index=0)
-
-        val_predictions_aug = df_val_aug.loc[:, ['any', 'epidural', 'intraparenchymal', 'intraventricular', 'subarachnoid', 'subdural']].values
-        val_loss_aug, val_loss_sum_aug = weighted_log_loss_numpy(val_predictions_aug, val_truth_oof)
-        print('aug: ', val_loss_aug, val_loss_sum_aug)
-
-
-    with open(model_snapshot_path + 'prediction/{model_name}.csv'.format(model_name=model_name), 'a', newline='') as f:
-        writer = csv.writer(f)
-        if is_center:
-            writer.writerow(['center: ', val_loss_center, val_loss_sum_center])  
-        if is_aug:
-            writer.writerow(['aug: ', val_loss_aug, val_loss_sum_aug])  
-
-    if is_center:
-        df_test_center = pd.concat(test_lists_center)
-        df_test_center = df_test_center.groupby('filename').mean()
-        df_test_center.to_csv(prediction_path + 'test_center.csv')
-        
     if is_aug:
         df_test_aug = pd.concat(test_lists_aug)
         df_test_aug = pd.concat(test_lists_aug)
@@ -480,8 +414,6 @@ def predict_all(model_name, image_size):
     
     
 if __name__ == '__main__':
-    csv_path = '../data/stage1_train_cls.csv'
-    test_csv_path = '../data/stage2_test_cls.csv'
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("-backbone", "--backbone", type=str, default='DenseNet121_change_avg', help='backbone')
@@ -506,14 +438,8 @@ if __name__ == '__main__':
     model_snapshot_path = args.snapshot_path.replace('\n', '').replace('\r', '') + '/'
     kfold_path = '../data/fold_5_by_study_image/'
 
-    df_test = pd.read_csv(test_csv_path)  
-    c_test = list(set(df_test['filename'].values.tolist()))
-    df_all = pd.read_csv(csv_path)
-    is_center = False
     is_aug = True
     num_aug = 10
-    val_truth_oof = df_all.sort_values(by='filename').reset_index(drop = True).loc[:, ['any', 'epidural', 'intraparenchymal', 'intraventricular', 'subarachnoid', 'subdural']].values
-
     backbone = args.backbone
     print(backbone)
     predict_all(backbone, Image_size)
