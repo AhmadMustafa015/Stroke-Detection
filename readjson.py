@@ -58,6 +58,8 @@ with open(jsonpath) as f:
         mask = cv2.cvtColor(final_image, cv2.COLOR_GRAY2BGR)
         final2 = cv2.addWeighted(mask, 0.5, origimage, 1 - 0.5, 0, origimage)
         '''
+        final_image[final_image > 2] = 0
+
         writepath = 'C:/Users/RadioscientificOne/PycharmProjects/Stroke-Detection/Baturalp_labels/Selected MASK/'+ 'baturalp@'+  orig_name
         cv2.imwrite(writepath,final_image)
         #cv2.imshow('image1', origimage )

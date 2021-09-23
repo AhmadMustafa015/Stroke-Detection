@@ -208,8 +208,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("-backbone", "--backbone", type=str, default='unet_brain_seg', help='backbone')
     parser.add_argument("-img_size", "--Image_size", type=int, default=256, help='image_size')
-    parser.add_argument("-tbs", "--train_batch_size", type=int, default=64, help='train_batch_size')
-    parser.add_argument("-vbs", "--val_batch_size", type=int, default=64, help='val_batch_size')
+    parser.add_argument("-tbs", "--train_batch_size", type=int, default=32, help='train_batch_size')
+    parser.add_argument("-vbs", "--val_batch_size", type=int, default=32, help='val_batch_size')
     parser.add_argument("-save_path", "--model_save_path", type=str,
                         default='unet_brain_seg', help='epoch')
     args = parser.parse_args()

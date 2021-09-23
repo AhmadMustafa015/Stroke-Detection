@@ -75,7 +75,6 @@ class Dataset_train_by_study_context(data.Dataset):
             fullname = study_name
             label = np.array(cv2.imread('./Baturalp_labels/Selected MASK/' + str(fullname), 0))
         image = cv2.imread(png_out_path + 'extracted_png_brain/' + fullname, 0)
-        #print(study_name)
         image = cv2.resize(image, (512, 512))
         image_up = cv2.imread(png_out_path + 'extracted_png_subdural/' + fullname, 0)  # we use one window for now
         image_up = cv2.resize(image_up, (512, 512))
@@ -84,10 +83,7 @@ class Dataset_train_by_study_context(data.Dataset):
 
         image_cat = np.concatenate([image_up[:, :, np.newaxis], image[:, :, np.newaxis], image_down[:, :, np.newaxis]],
                                    2)
-        try:
-            label = to_categorical(label, num_classes=3).astype(np.uint8) #multi-class segmentation
-        except:
-            print(label.shape, label.max(),study_name)
+        label = to_categorical(label, num_classes=3).astype(np.uint8) #multi-class segmentation
         label = np.moveaxis(np.array(label), 2, 0)[1:]  #Remove background
         if random.random() < 0.5:
             image_cat = cv2.cvtColor(image_cat, cv2.COLOR_BGR2RGB)
