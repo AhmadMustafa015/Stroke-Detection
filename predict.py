@@ -16,6 +16,7 @@ import numpy as np
 import random
 import math
 import argparse
+from net.models import *
 
 def randomHorizontalFlip(image, u=0.5):
     if np.random.random() < u:
@@ -212,7 +213,7 @@ class PredictionDatasetAug:
         self.name_list = name_list
         self.n_test_aug = n_test_aug
         self.mode = mode
-        self.png_out_path = ""
+        self.png_out_path = "./prediction_output/"
 
     def __len__(self):
         return len(self.name_list) * self.n_test_aug
@@ -220,12 +221,13 @@ class PredictionDatasetAug:
     def __getitem__(self, idx):
 
         filename = self.name_list[idx % len(self.name_list)]
-        image = cv2.imread(self.png_out_path + 'extracted_png_brain/' + filename + '.png', 0)
+        filename = filename.split('_')[0]
+        image = cv2.imread(self.png_out_path + 'brain/' + filename + '_brain.png', 0)
         image = cv2.resize(image, (256, 256))
-        image_up = cv2.imread(self.png_out_path + 'extracted_png_subdural/' + filename + '.png',
+        image_up = cv2.imread(self.png_out_path + 'subdural/' + filename + '_subdural.png',
                               0)  # we use one window for now
         image_up = cv2.resize(image_up, (256, 256))
-        image_down = cv2.imread(self.png_out_path + 'extracted_png_bone/' + filename + '.png', 0)
+        image_down = cv2.imread(self.png_out_path + 'bone/' + filename + '_bone.png', 0)
         image_down = cv2.resize(image_down, (256, 256))
 
         image_cat = np.concatenate(
@@ -272,10 +274,10 @@ def predict(model, name_list, batch_size: int, n_test_aug: int, aug=False, mode=
 
     features_list = {}
     for names, inputs, labels in tqdm(loader, desc='Predict'):
-        labels = labels.view(-1, 3).contiguous().cuda(async=True)
+        labels = labels.view(-1, 3).contiguous().cuda(non_blocking=True)
         all_truth = torch.cat((all_truth, labels), 0)
         with torch.no_grad():
-            inputs = torch.autograd.variable(inputs).cuda(async=True)
+            inputs = torch.autograd.variable(inputs).cuda(non_blocking=True)
 
         if backbone == 'DenseNet121_change_avg':
             feature = model.module.densenet121(inputs)      
@@ -359,59 +361,50 @@ def group_aug(val_p_aug, val_names_aug, val_truth_aug):
 
 def predict_all(model_name, image_size):
 
-    for fold in [0,1,2,3,4]:
+    fold = 0
+    print(fold)
 
-        print(fold)
-        
-        if not os.path.exists(model_snapshot_path + 'prediction/'):
-            os.makedirs(model_snapshot_path + 'prediction/')
-        if not os.path.exists(model_snapshot_path + 'prediction/npy_train/'):
-            os.makedirs(model_snapshot_path + 'prediction/npy_train/')
-        if not os.path.exists(model_snapshot_path + 'prediction/npy_test/'):
-            os.makedirs(model_snapshot_path + 'prediction/npy_test/')
+    if not os.path.exists(model_snapshot_path + 'prediction/'):
+        os.makedirs(model_snapshot_path + 'prediction/')
+    if not os.path.exists(model_snapshot_path + 'prediction/npy_train/'):
+        os.makedirs(model_snapshot_path + 'prediction/npy_train/')
+    if not os.path.exists(model_snapshot_path + 'prediction/npy_test/'):
+        os.makedirs(model_snapshot_path + 'prediction/npy_test/')
 
-        prediction_path = model_snapshot_path+'prediction/fold_{fold}'.format(fold=fold)
+    prediction_path = model_snapshot_path+'prediction/fold_{fold}'.format(fold=fold)
 
-        f_val = open(kfold_path + 'fold{fold}/val.txt'.format(fold=fold), 'r')
-        c_val = f_val.readlines()
-        f_val.close()
-        c_val = [s.replace('\n', '') for s in c_val]
-            
-        model = eval(model_name+'()')
-        model = nn.DataParallel(model).cuda()
+    model = eval(model_name+'()')
+    model = nn.DataParallel(model).cuda()
 
-        state = torch.load(model_snapshot_path + 'model_epoch_best_{fold}.pth'.format(fold=fold))
+    state = torch.load(model_snapshot_path + 'model_epoch_79_0.pth')
 
-        epoch = state['epoch']
-        best_valid_loss = state['valLoss']
-        model.load_state_dict(state['state_dict'])
-        print(epoch, best_valid_loss)
+    epoch = state['epoch']
+    best_valid_loss = state['valLoss']
+    model.load_state_dict(state['state_dict'])
+    print(epoch, best_valid_loss)
 
-        model.eval()
-
-        if is_aug:
-            test_p_aug, test_names_aug, test_truth_aug = predict(model, batch_size, num_aug, True, 'test', fold)
-            test_predictions_aug, test_image_names_aug, test_truth_aug = group_aug(test_p_aug, test_names_aug, test_truth_aug)
-
-            df = pd.DataFrame(data=test_predictions_aug,  columns=['any', 'epidural', 'intraparenchymal', 'intraventricular', 'subarachnoid', 'subdural'])
-            df['filename'] = test_image_names_aug
-            df.to_csv(prediction_path + '_test_aug_{num_aug}.csv'.format(num_aug=num_aug))
-
-
-    test_lists_aug = []
-
-    prediction_path = model_snapshot_path + 'prediction/'
-    for fold in range(5):
-        if is_aug:
-            df_test_aug = pd.read_csv(prediction_path + 'fold_{fold}_test_aug_{num_aug}.csv'.format(fold=fold, num_aug=num_aug), index_col=0)
-            test_lists_aug.append(df_test_aug)
+    model.eval()
 
     if is_aug:
-        df_test_aug = pd.concat(test_lists_aug)
-        df_test_aug = pd.concat(test_lists_aug)
-        df_test_aug = df_test_aug.groupby('filename').mean()
-        df_test_aug.to_csv(prediction_path + 'test_aug_{num_aug}.csv'.format(num_aug=num_aug))
-    
+        test_p_aug, test_names_aug, test_truth_aug = predict(model, name_list, batch_size, num_aug, True, 'test', fold)
+        test_predictions_aug, test_image_names_aug, test_truth_aug = group_aug(test_p_aug, test_names_aug, test_truth_aug)
+
+        df = pd.DataFrame(data=test_predictions_aug,  columns=['any', 'ISKEMIA', 'KANAMA'])
+        df['filename'] = test_image_names_aug
+        df.to_csv(prediction_path + '_test_aug_{num_aug}.csv'.format(num_aug=num_aug))
+
+        competition_output = "./Final_output_Prediction/"
+        if not os.path.exists(competition_output):
+            os.makedirs(competition_output)
+        final_list = []
+        for name,score in zip(test_image_names_aug, test_predictions_aug):
+            if score[0] > 0.5:
+                final_list.append([name, 1])
+            else:
+                final_list.append([name, 0])
+
+        df_final = pd.DataFrame(data=final_list, columns=['ID', 'ETIKET'])
+        df_final.to_csv(competition_output + 'classification_results.csv',index=False)
     
 if __name__ == '__main__':
 
@@ -430,13 +423,18 @@ if __name__ == '__main__':
     train_batch_size = args.train_batch_size
     val_batch_size = args.val_batch_size
     batch_size = val_batch_size
-    workers = 4
+    workers = 6
     print(Image_size)
     print(train_batch_size)
     print(val_batch_size)
+    name_list = []
+    out_preprocessing_path = "./prediction_output/brain/"
+    for (dirpath, dirnames, filenames) in os.walk(out_preprocessing_path):
+        name_list.extend(filenames)
+        break
 
-    model_snapshot_path = args.snapshot_path.replace('\n', '').replace('\r', '') + '/'
-    kfold_path = '../data/fold_5_by_study_image/'
+    model_snapshot_path = './data_test/DenseNet121_change_avg_256/'
+    kfold_path = './data_test/DenseNet121_change_avg_256/model_epoch_79_0.pth'
 
     is_aug = True
     num_aug = 10

@@ -55,24 +55,27 @@ class Dataset_train_by_study_context(data.Dataset):
         self.mask_trans = mask_trans
     def __getitem__(self, idx):
         study_name = self.name_list[idx % len(self.name_list)]
-        study_train_df = self.df[self.df['filename'] == int(study_name)]
-        # study_index = random.choice(generate_random_list(study_train_df.shape[0]-1))
-
-        # slice_id = study_name + '_' + str(study_index)
-        filename = study_train_df['filename'].values
-        if study_train_df['any'].values == 0:
-            fullname = str(filename[0]) + '_0.png'
-            assert False, "Error: Segmentation Training for stroke cases"
-            #dicom_path + ISKEMI\MASK\ + str(filename[0]) + '.png'
-        elif study_train_df['ISKEMI'].values == 1:
-            fullname = str(filename[0]) + '_1.png'
-            label = np.array(cv2.imread(settings.dicom_path + 'ISKEMI/MASK/' + str(filename[0]) + '.png', 0))
-        elif study_train_df['KANAMA'].values == 1:
-            fullname = str(filename[0]) + '_2.png'
-            label = np.array(cv2.imread(settings.dicom_path + 'KANAMA/MASK/' + str(filename[0]) + '.png', 0))
+        is_bat = study_name.split('@')[0]
+        if is_bat != 'baturalp':
+            study_train_df = self.df[self.df['filename'] == int(study_name)]
+            filename = study_train_df['filename'].values
+            if study_train_df['any'].values == 0:
+                fullname = str(filename[0]) + '_0.png'
+                assert False, "Error: Segmentation Training for stroke cases"
+                # dicom_path + ISKEMI\MASK\ + str(filename[0]) + '.png'
+            elif study_train_df['ISKEMI'].values == 1:
+                fullname = str(filename[0]) + '_1.png'
+                label = np.array(cv2.imread(settings.dicom_path + 'ISKEMI/MASK/' + str(filename[0]) + '.png', 0))
+            elif study_train_df['KANAMA'].values == 1:
+                fullname = str(filename[0]) + '_2.png'
+                label = np.array(cv2.imread(settings.dicom_path + 'KANAMA/MASK/' + str(filename[0]) + '.png', 0))
+            else:
+                print("Error wrong image label")
         else:
-            print("Error wrong image label")
+            fullname = study_name
+            label = np.array(cv2.imread('./Baturalp_labels/Selected MASK/' + str(fullname), 0))
         image = cv2.imread(png_out_path + 'extracted_png_brain/' + fullname, 0)
+        #print(study_name)
         image = cv2.resize(image, (512, 512))
         image_up = cv2.imread(png_out_path + 'extracted_png_subdural/' + fullname, 0)  # we use one window for now
         image_up = cv2.resize(image_up, (512, 512))
@@ -81,7 +84,10 @@ class Dataset_train_by_study_context(data.Dataset):
 
         image_cat = np.concatenate([image_up[:, :, np.newaxis], image[:, :, np.newaxis], image_down[:, :, np.newaxis]],
                                    2)
-        label = to_categorical(label, num_classes=3).astype(np.uint8) #multi-class segmentation
+        try:
+            label = to_categorical(label, num_classes=3).astype(np.uint8) #multi-class segmentation
+        except:
+            print(label.shape, label.max(),study_name)
         label = np.moveaxis(np.array(label), 2, 0)[1:]  #Remove background
         if random.random() < 0.5:
             image_cat = cv2.cvtColor(image_cat, cv2.COLOR_BGR2RGB)

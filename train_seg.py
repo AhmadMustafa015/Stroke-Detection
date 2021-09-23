@@ -82,6 +82,8 @@ def train(model_name,image_size):
     df_all = df_all[df_all['any'] == 1]
     kfold_path_train = 'output/fold_5_by_study/'
     kfold_path_val = 'output/fold_5_by_study/'
+    Kfold_path_test = "output/test.txt"
+    Kfold_path_train_bat = "output/train_baturalp.txt"
     num_fold = 0 #for now
     with open(snapshot_path + '/log.csv', 'a', newline='') as f:
         writer = csv.writer(f)
@@ -89,18 +91,28 @@ def train(model_name,image_size):
 
     f_train = open(kfold_path_train + 'fold' + str(num_fold) + '/train.txt', 'r')
     f_val = open(kfold_path_val + 'fold' + str(num_fold) + '/val.txt', 'r')
+    f_test = open(Kfold_path_test, 'r')
+    f_train_bat = open(Kfold_path_train_bat, 'r')
+
     c_train = f_train.readlines()
     c_val = f_val.readlines()
     f_train.close()
     f_val.close()
     c_train = [s.replace('\n', '') for s in c_train]
     c_val = [s.replace('\n', '') for s in c_val]
+    c_test = f_test.readlines()
+    f_test.close()
+    c_test = [s.replace('\n', '') for s in c_test]
+    c_bat = f_train_bat.readlines()
+    f_train_bat.close()
+    c_bat = [s.replace('\n', '') for s in c_bat]
+    c_train = c_train + c_test
     for index, row in df_all_filtered.iterrows():
         if str(row['filename']) in c_train:
             c_train.remove(str(row['filename']))
         if str(row['filename']) in c_val:
             c_val.remove(str(row['filename']))
-
+    c_train += c_bat
 
     # for debug
     # c_train = c_train[0:1000]

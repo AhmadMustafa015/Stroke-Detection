@@ -68,6 +68,7 @@ def normalize_minmax(img):
 def prepare_image(img_path,min_window,max_window):
     #img_id = get_id(img_dicom)
     img_id = ntpath.basename(img_path).replace(".dcm", "")
+    print(img_path)
     itkimage = sitk.ReadImage(img_path)
     numpyImage = sitk.GetArrayFromImage(itkimage)
     numpyImage = numpyImage[0]
@@ -104,7 +105,7 @@ def prepare_data(Input,out_preprocessing_path):
     if not os.path.exists(out_preprocessing_path):
         os.makedirs(out_preprocessing_path)
 
-    prepare_images_njobs(glob(Input), out_preprocessing_path)
+    prepare_images_njobs(glob(Input + '/*'), out_preprocessing_path)
 """
 def epochVal(model, dataLoader,pred_batch_size,c_pred):
     model.eval ()
@@ -214,9 +215,21 @@ def predict_classification():
     """
 if __name__ == '__main__':
     #STEP1 :Preprocessing
-    Input_path = ""
+    Input_path = "./Testdata"
     out_preprocessing_path = "./prediction_output/" #make sure it end with /
     prepare_data(Input_path,out_preprocessing_path)
+    """
+    #Extract the test from csv to folder
+    Kfold_path_val = "test.txt"
+    f_val = open(kfold_path_val, 'r')
+    c_val = f_val.readlines()
+    f_val.close()
+    c_val = [s.replace('\n', '') for s in c_val]
+    for path in glob.glob(dir + '/*/*.dcm'):
+        #do stuff
+"""
+
+
 """
 #STEP2: Classification Network
 model_name = "Dense"
