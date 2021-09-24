@@ -112,7 +112,7 @@ def train(model_name,image_size):
             c_train.remove(str(row['filename']))
         if str(row['filename']) in c_val:
             c_val.remove(str(row['filename']))
-    c_train += c_bat
+    #c_train += c_bat
 
     # for debug
     # c_train = c_train[0:1000]
@@ -141,6 +141,7 @@ def train(model_name,image_size):
     trMaxEpoch = 200
     for epochID in tqdm(range(0,trMaxEpoch), total=trMaxEpoch):
         epochID = epochID + 0
+        print(epochID)
 
         start_time = time.time()
         model.train()
@@ -182,9 +183,9 @@ def train(model_name,image_size):
 
         epoch_time = time.time() - start_time
 
-        if (epochID + 1) % 5 == 0 or epochID > 79:
+        if (epochID + 1) % 5 == 0 or epochID > 79 or epochID == 0:
             torch.save({'epoch': epochID + 1, 'state_dict': model.state_dict(), 'valLoss': valLoss},
-                       snapshot_path + '/model_epoch_' + str(epochID) + '_' + str(num_fold) + '.pth')
+                       './data_test/unet_brain_seg' + '/model_epoch_' + str(epochID) + '_' + str(num_fold) + '.pth')
 
         result = [epochID,
                   round(optimizer.state_dict()['param_groups'][0]['lr'], 6),

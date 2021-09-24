@@ -80,11 +80,17 @@ def prepare_image(img_path,min_window,max_window):
 def prepare_and_save(img_path, subfolder):
     try:
         img_id, img_pil = prepare_image(img_path,600,2800)
-        save_img(img_pil, subfolder, img_id, "Bone")
+        if not os.path.exists(subfolder + 'bone/'):
+            os.makedirs(subfolder + 'bone/')
+        save_img(img_pil, subfolder + 'bone/', img_id, "Bone")
         img_id, img_pil = prepare_image(img_path,80,200)
-        save_img(img_pil, subfolder, img_id, "subdural")
+        if not os.path.exists(subfolder + 'subdural/'):
+            os.makedirs(subfolder + 'subdural/')
+        save_img(img_pil, subfolder + 'subdural/', img_id, "subdural")
         img_id, img_pil, = prepare_image(img_path,40,80)
-        save_img(img_pil, subfolder, img_id, "brain")
+        if not os.path.exists(subfolder + 'brain/'):
+            os.makedirs(subfolder + 'brain/')
+        save_img(img_pil, subfolder + 'brain/' , img_id, "brain")
     except KeyboardInterrupt:
          #Rais interrupt exception so we can stop the cell execution
          #without shutting down the kernel.
@@ -215,7 +221,7 @@ def predict_classification():
     """
 if __name__ == '__main__':
     #STEP1 :Preprocessing
-    Input_path = "./Testdata"
+    Input_path = "C:/Users/RadioscientificOne/Desktop/DENEME"
     out_preprocessing_path = "./prediction_output/" #make sure it end with /
     prepare_data(Input_path,out_preprocessing_path)
     """

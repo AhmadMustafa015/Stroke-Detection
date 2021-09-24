@@ -84,12 +84,12 @@ class unet_brain_seg(nn.Module):
     def __init__(self):
         super(unet_brain_seg, self).__init__()
         self.unet = torch.hub.load('mateuszbuda/brain-segmentation-pytorch', 'unet',
-    in_channels=3, out_channels=2, init_features=32,pretrained=False)
-        #self.num_ftrs = self.unet.conv.in_channels
-        #self.kernelsize = self.unet.conv.kernel_size
+    in_channels=3, out_channels=1, init_features=32,pretrained=True)
+        self.num_ftrs = self.unet.conv.in_channels
+        self.kernelsize = self.unet.conv.kernel_size
         # Here the size of each output sample is set to 2.
         # Alternatively, it can be generalized to nn.Linear(num_ftrs, len(class_names)).
-        #self.unet.conv = nn.Conv2d(self.num_ftrs, 2, kernel_size=self.kernelsize)
+        self.unet.conv = nn.Conv2d(self.num_ftrs, 2, kernel_size=self.kernelsize)
 
     def forward(self, x):
         x = self.unet(x)
